@@ -46,30 +46,22 @@ with col_title:
         "in Canada and simulating the impact of public-service interventions."
     )
 
-# About the AI decision-support agent
-with st.expander("About LaborPulse-AI (AI decision-support agent)", expanded=False):
-    st.markdown(
-        """
-        LaborPulse-AI is an **AI decision-support agent** designed to analyze aggregated workforce
-        mental-health indicators from SMEs and evaluate how government or organizational interventions
-        affect productivity and economic outcomes.
+# --------------------------------------------------------------------
+# ABOUT AGENT (GLOBAL) — ALWAYS VISIBLE
+# --------------------------------------------------------------------
+st.markdown("""
+### About LaborPulse-AI (AI decision-support agent)
 
-        **What this prototype does:**
+LaborPulse-AI analyzes **aggregated** SME workforce mental-health indicators to estimate
+economic loss, simulate interventions, and support **policy-level** and **organizational**
+decisions – never individual profiling.
 
-        - **Impact visualization:** Shows how interventions change mental-health scores, lost days, and
-          economic losses across provinces, using before/after comparisons and summary graphs.
-        - **Predictive analytics (MVP):** Uses the current data and intervention scenario to estimate
-          monthly and projected annual savings, providing a forward-looking view of potential gains.
-        - **Outcome assessment:** Quantifies both **positive economic gains** (cost reductions) and
-          **negative outcomes** (when an intervention increases losses), and reports them clearly.
-        - **Decision-support role:** Only produces **organizational and policy-level outputs**; it never
-          ranks or profiles individual workers and is intended to support responsible, evidence-based
-          public-service decisions.
+- **Impact visualization:** dashboards for loss, savings, and lost days  
+- **Predictive analytics (MVP):** simple projections of future economic impact based on current patterns  
+- **Outcome assessment:** highlights both **gains** (savings) and **losses** (when an intervention backfires)  
+- **Responsible AI:** only aggregated SME/provincial outputs, no worker-level scoring  
+""")
 
-        Future versions can incorporate **continuous learning** from multiple historical datasets, and
-        richer time-series models to forecast mental-health risks by province and nationally.
-        """
-    )
 
 # -------------------------
 # Synthetic data generator with scenario intensity
