@@ -74,6 +74,9 @@ decisions – never individual profiling.
 - **AI learning & prediction:** trains a model on available data to predict losses  
 - **Outcome assessment:** highlights both **gains** (savings) and **losses** (when an intervention backfires)  
 - **Responsible AI:** only aggregated SME/provincial outputs, no worker-level scoring  
+
+In this version, **stress scores directly increase lost productive days** via a stress-related
+presenteeism factor. Reducing stress now leads to visible **economic savings**.
 """)
 
 # -------------------------
@@ -174,6 +177,11 @@ BURNOUT_TO_PRESENTEEISM_SCALE = st.sidebar.number_input(
     "Burnout → presenteeism days scale (0–1)",
     value=0.10, min_value=0.0, max_value=1.0, step=0.01
 )
+STRESS_TO_PRESENTEEISM_SCALE = st.sidebar.number_input(
+    "Stress → presenteeism days scale (0–1)",
+    value=0.05, min_value=0.0, max_value=1.0, step=0.01,
+    help="How much stress (1–10) converts into extra 'lost days' via reduced focus, fatigue, etc."
+)
 
 # -------------------------
 # Load data based on scenario
@@ -231,15 +239,32 @@ for col in ["employees","avg_daily_wage","stress_score","burnout_score","absente
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
 # -------------------------
-# Economic loss calculation per SME (rule-based)
+# Economic loss calculation per SME (rule-based with STRESS EFFECT)
 # -------------------------
 def compute_economic_loss(df_in):
     df_l = df_in.copy()
+
+    # 1) Absenteeism: direct days lost
     df_l['absenteeism_days_per_emp'] = df_l['absenteeism_score'].clip(1,10)
+
+    # 2) Burnout-related presenteeism: reduced productivity while present
     df_l['presenteeism_days_equiv_per_emp'] = (
         (df_l['burnout_score'] / 10.0) * WORKDAYS_PER_MONTH * BURNOUT_TO_PRESENTEEISM_SCALE
     )
-    df_l['lost_days_per_emp'] = df_l['absenteeism_days_per_emp'] + df_l['presenteeism_days_equiv_per_emp']
+
+    # 3) NEW: Stress-related presenteeism: cognitive load, fatigue, lower focus
+    df_l['stress_days_equiv_per_emp'] = (
+        (df_l['stress_score'] / 10.0) * WORKDAYS_PER_MONTH * STRESS_TO_PRESENTEEISM_SCALE
+    )
+
+    # 4) Total lost days per employee
+    df_l['lost_days_per_emp'] = (
+        df_l['absenteeism_days_per_emp']
+        + df_l['presenteeism_days_equiv_per_emp']
+        + df_l['stress_days_equiv_per_emp']
+    )
+
+    # 5) Monetary loss
     df_l['loss_per_emp_cad'] = df_l['lost_days_per_emp'] * df_l['avg_daily_wage']
     df_l['estimated_monthly_loss_cad'] = df_l['loss_per_emp_cad'] * df_l['employees']
     df_l['estimated_monthly_loss_cad'] = df_l['estimated_monthly_loss_cad'].round(2)
@@ -252,6 +277,7 @@ st.dataframe(
     df_losses[[
         "province","sme_id","sector","employees","avg_daily_wage",
         "stress_score","burnout_score","absenteeism_score",
+        "stress_days_equiv_per_emp","presenteeism_days_equiv_per_emp",
         "lost_days_per_emp","estimated_monthly_loss_cad"
     ]].head(5),
     use_container_width=True
@@ -561,7 +587,7 @@ st.markdown(
       (**{delta_pct:.1f}% {direction_word}**).
     - At the national level, average lost days per employee shift from
       **{nat_lost_before:.2f} days/month** to **{nat_lost_after:.2f} days/month**. This indicates
-      a **{('decline' if nat_lost_after < nat_lost_before else 'rise')} in time lost to absenteeism and burnout**, 
+      a **{('decline' if nat_lost_after < nat_lost_before else 'rise')} in time lost to absenteeism, burnout, and stress**, 
       which is a proxy for **response time to mental-health needs** and overall workplace support.
     """
 )
@@ -642,7 +668,7 @@ if ai_model is not None and ai_baseline_total is not None:
 
         - The table ranks intervention types by **AI-estimated monthly savings**, assuming a modest
           reduction of 2 points in the relevant risk scores.
-        - Interventions at the top (often **burnout-focused** in many SME contexts) tend to produce
+        - Interventions at the top (often **burnout- or stress-focused** in many SME contexts) tend to produce
           the largest economic returns and may warrant **priority investment** (e.g., counseling benefits,
           manager training, psychosocial support).
         - This ranking is **data-driven** and updates automatically when you upload new SME datasets or
