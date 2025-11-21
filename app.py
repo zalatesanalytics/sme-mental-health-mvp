@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Try to load scikit-learn for the  AI model
+# Try to load scikit-learn for the AI model
 try:
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import train_test_split
@@ -57,7 +57,7 @@ with col_title:
     st.title("LaborPulse-AI To Improve Public Service")
     st.caption(
         "Decision-support prototype for estimating SME workforce mental-health–related productivity losses "
-        "in Canada and simulating the impact of public-service interventions."
+        "in Canada, forecasting risks, and simulating the impact of public-service interventions."
     )
 
 # --------------------------------------------------------------------
@@ -72,11 +72,12 @@ decisions – never individual profiling.
 
 - **Impact visualization:** dashboards for loss, savings, and lost days  
 - **AI learning & prediction:** trains a model on available data to predict losses  
+- **12-month forecasting:** projects mental-health risk indicators and at-risk employees by province  
 - **Outcome assessment:** highlights both **gains** (savings) and **losses** (when an intervention backfires)  
 - **Responsible AI:** only aggregated SME/provincial outputs, no worker-level scoring  
 
 In this version, **stress scores directly increase lost productive days** via a stress-related
-presenteeism factor. Reducing stress now leads to visible **economic savings**.
+presenteeism factor. Reducing stress or burnout now leads to visible **economic savings**.
 """)
 
 # -------------------------
@@ -134,7 +135,7 @@ def generate_synthetic_data(intensity="mixed", seed=42, n_smes=200):
 # -------------------------
 st.sidebar.title("LaborPulse-AI Controls")
 
-# Default is now "Sample: Medium impact" (index=2)
+# Default is "Sample: Medium impact" (index=2)
 scenario_choice = st.sidebar.radio(
     "Choose dataset scenario:",
     [
@@ -455,7 +456,7 @@ st.metric(
 # --- AI-estimated savings for this scenario (using learned model) ---
 ai_sim_total = None
 ai_scenario_savings = None
-if ai_model is not None:
+if 'ai_model' in globals() and ai_model is not None:
     try:
         ai_sim_total = ai_model.predict(df_sim[FEATURES]).sum()
         ai_scenario_savings = ai_baseline_total - ai_sim_total if ai_baseline_total is not None else None
@@ -624,7 +625,7 @@ st.markdown(
 # --------------------------------------------------------------------
 st.write("### AI-based recommended intervention priorities for government")
 
-if ai_model is not None and ai_baseline_total is not None:
+if 'ai_model' in globals() and ai_model is not None and ai_baseline_total is not None:
     def ai_simulate_intervention(df_base, intervention_type, points):
         df_tmp = df_base.copy()
         if points > 0:
@@ -638,7 +639,7 @@ if ai_model is not None and ai_baseline_total is not None:
         total_pred = ai_model.predict(df_tmp[FEATURES]).sum()
         return total_pred
 
-    test_points = 2  # default, can interpret as "modest but realistic intervention"
+    test_points = 2  # modest but realistic scenario
     scenarios = [
         "Reduce burnout scores",
         "Reduce stress scores",
@@ -682,6 +683,199 @@ else:
         "(either scikit-learn is missing or there were too few rows)."
     )
 
+# --------------------------------------------------------------------
+# 12-MONTH FORECAST: PROVINCIAL & NATIONAL MENTAL-HEALTH OUTLOOK
+# --------------------------------------------------------------------
+st.write("## 12-Month Forecast: Provincial Mental-Health Trends & At-Risk Employees")
+
+@st.cache_data
+def build_12m_forecast(prov_table, intervention_type, points):
+    """
+    Scenario-based 12-month forecast using current (post-intervention) provincial averages
+    as the starting point. This is a simple, interpretable projection:
+    - With no intervention: slight upward drift in risk.
+    - With interventions: gentle downward drift in stress/burnout/absenteeism.
+    """
+    rng = np.random.default_rng(123)
+    months = pd.date_range(pd.Timestamp.today().normalize(), periods=12, freq="MS")
+
+    records = []
+
+    for _, row in prov_table.iterrows():
+        prov = row["province"]
+        base_s = row["avg_stress"]
+        base_b = row["avg_burnout"]
+        base_a = row["avg_absenteeism"]
+        emp = row["total_employees"]
+
+        # Direction of trend based on intervention
+        if intervention_type == "None" or points == 0:
+            # Slight worsening over time without action
+            s_slope = 0.04
+            b_slope = 0.05
+            a_slope = 0.03
+            slope_scale = 1.0
+        else:
+            # Interventions push risks downward
+            scale = points / 5.0  # 0–1
+            s_slope = -0.10 * scale
+            b_slope = -0.12 * scale
+            a_slope = -0.08 * scale
+            slope_scale = 1.0
+
+        for i, dt in enumerate(months, start=1):
+            # Month fraction (0–1)
+            t = i
+
+            # Add small noise for realism
+            eps_s = rng.normal(0, 0.10)
+            eps_b = rng.normal(0, 0.10)
+            eps_a = rng.normal(0, 0.10)
+
+            stress_t = np.clip(base_s + s_slope * t + eps_s, 1, 10)
+            burnout_t = np.clip(base_b + b_slope * t + eps_b, 1, 10)
+            abs_t = np.clip(base_a + a_slope * t + eps_a, 1, 10)
+
+            composite = (stress_t + burnout_t + abs_t) / 3.0
+
+            # Probability that an employee experiences at least one major challenge
+            # (stress/anxiety/depression proxy) in that month.
+            prob_challenge = np.clip(
+                0.05 + 0.05 * (composite / 10.0) + 0.02 * (abs_t / 10.0),
+                0.0,
+                0.80
+            )
+            expected_at_risk = emp * prob_challenge
+
+            records.append({
+                "province": prov,
+                "month_index": i,
+                "month_date": dt,
+                "month_label": dt.strftime("%Y-%m"),
+                "forecast_stress": stress_t,
+                "forecast_burnout": burnout_t,
+                "forecast_absenteeism": abs_t,
+                "composite_index": composite,
+                "prob_challenge": prob_challenge,
+                "employees": emp,
+                "expected_employees_at_risk": expected_at_risk
+            })
+
+    return pd.DataFrame(records)
+
+# Forecast is based on the *post-intervention* provincial averages (prov_sim)
+forecast_df = build_12m_forecast(prov_sim, intervention, reduction_points)
+
+# --- Provincial trend visualization ---
+prov_list = sorted(forecast_df["province"].unique())
+selected_prov = st.selectbox("Select province to view 12-month forecast", prov_list)
+
+prov_forecast = forecast_df[forecast_df["province"] == selected_prov].copy()
+
+st.write(f"### 12-month forecast for {selected_prov} (scenario: {intervention}, reduction = {reduction_points} points)")
+fig, ax = plt.subplots(figsize=(7,4))
+ax.plot(prov_forecast["month_label"], prov_forecast["forecast_stress"], marker="o", label="Stress")
+ax.plot(prov_forecast["month_label"], prov_forecast["forecast_burnout"], marker="o", label="Burnout")
+ax.plot(prov_forecast["month_label"], prov_forecast["forecast_absenteeism"], marker="o", label="Absenteeism")
+ax.set_ylabel("Risk score (1–10)")
+ax.set_xlabel("Month")
+ax.set_title(f"Forecasted mental-health indicators – {selected_prov}")
+ax.legend()
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+st.pyplot(fig, use_container_width=True)
+
+st.write("Forecast table (province-level, next 12 months):")
+st.dataframe(
+    prov_forecast[[
+        "month_label",
+        "forecast_stress",
+        "forecast_burnout",
+        "forecast_absenteeism",
+        "composite_index",
+        "prob_challenge",
+        "expected_employees_at_risk"
+    ]],
+    use_container_width=True
+)
+
+# --- National forecast summary ---
+national_month = forecast_df.groupby("month_label").agg(
+    total_employees=("employees", "sum"),
+    expected_at_risk=("expected_employees_at_risk", "sum"),
+    avg_composite=("composite_index", "mean")
+).reset_index()
+
+national_month["percent_at_risk"] = np.where(
+    national_month["total_employees"] > 0,
+    100.0 * national_month["expected_at_risk"] / national_month["total_employees"],
+    0.0
+)
+
+st.write("### National forecast summary (next 12 months)")
+st.dataframe(
+    national_month[[
+        "month_label",
+        "avg_composite",
+        "expected_at_risk",
+        "total_employees",
+        "percent_at_risk"
+    ]],
+    use_container_width=True
+)
+
+fig2, ax2 = plt.subplots(figsize=(7,4))
+ax2.plot(
+    national_month["month_label"],
+    national_month["percent_at_risk"],
+    marker="o"
+)
+ax2.set_ylabel("Employees at risk (%)")
+ax2.set_xlabel("Month")
+ax2.set_title("National forecast: % of employees at risk of major mental-health challenge")
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+st.pyplot(fig2, use_container_width=True)
+
+# --- Provincial expected at-risk employees (average month over next 12) ---
+prov_risk = forecast_df.groupby("province").agg(
+    total_employees=("employees", "max"),
+    avg_prob_challenge=("prob_challenge", "mean"),
+    expected_at_risk_per_month=("expected_employees_at_risk", "mean")
+).reset_index()
+
+prov_risk["percent_at_risk_per_month"] = np.where(
+    prov_risk["total_employees"] > 0,
+    100.0 * prov_risk["expected_at_risk_per_month"] / prov_risk["total_employees"],
+    0.0
+)
+
+st.write("### Expected employees at risk (per month, next 12 months, by province)")
+st.dataframe(
+    prov_risk.sort_values("expected_at_risk_per_month", ascending=False).style.format({
+        "avg_prob_challenge": "{:.2f}",
+        "expected_at_risk_per_month": "{:,.0f}",
+        "percent_at_risk_per_month": "{:.1f}"
+    }),
+    use_container_width=True
+)
+
+st.markdown(
+    """
+    **Interpretation (forecasted mental-health challenges):**
+
+    - For each province, the forecasted **stress, burnout, and absenteeism scores** are projected
+      over the next 12 months based on the current scenario (including any selected intervention).
+    - Using a simple, interpretable risk model, LaborPulse-AI estimates the probability that a worker
+      will experience at least one major mental-health challenge (stress/anxiety/depression proxy)
+      in a given month.
+    - The **national forecast summary** shows how many employees, in absolute numbers and as a
+      percentage of the workforce, are expected to be at risk each month.
+    - The **province-level at-risk table** helps identify jurisdictions where the **burden of mental-health
+      risk is highest**, supporting prioritization of public investments and policy responses.
+    """
+)
+
 # -------------------------
 # Export reports
 # -------------------------
@@ -702,11 +896,19 @@ st.download_button(
     mime="text/csv"
 )
 
+csv_bytes_forecast = forecast_df.to_csv(index=False).encode("utf-8")
+st.download_button(
+    "Download 12-month forecast (province × month, CSV)",
+    csv_bytes_forecast,
+    file_name="laborpulse_12m_forecast.csv",
+    mime="text/csv"
+)
+
 st.write("---")
 st.caption(
     "LaborPulse-AI is a prototype decision-support tool. Values are based on synthetic or aggregated SME data "
     "and configurable assumptions. For real-world policy, calibrate parameters with administrative and payroll data, "
-    "and consider integrating multi-year time-series for richer forecasting."
+    "and integrate multi-year time-series to strengthen forecasting accuracy."
 )
 
 st.markdown('</div>', unsafe_allow_html=True)
