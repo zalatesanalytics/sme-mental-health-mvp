@@ -5,28 +5,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # -------------------------
-# Page config & branding
+# Page config & base styling
 # -------------------------
 st.set_page_config(
     page_title="LaborPulse-AI Model Predictive Model to Improve Public Service",
     layout="wide"
 )
 
-# Background: Canada flag (public domain image)
+# Smarter background: soft gradient + white content block
 st.markdown(
     """
     <style>
     .stApp {
-        background-image: url("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Flag_of_Canada.svg/1280px-Flag_of_Canada.svg.png");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
+        background: radial-gradient(circle at top, #eef3ff 0, #ffffff 55%);
     }
-    /* Add subtle white overlay to improve readability */
     .main-block {
-        background-color: rgba(255, 255, 255, 0.85);
+        background-color: rgba(255, 255, 255, 0.97);
         padding: 1.5rem;
         border-radius: 1rem;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
     }
     </style>
     """,
@@ -35,11 +32,19 @@ st.markdown(
 
 st.markdown('<div class="main-block">', unsafe_allow_html=True)
 
-st.title("LaborPulse-AI Model Predictive Model to Improve Public Service")
-st.caption(
-    "Decision-support prototype for estimating workforce mental-health–related productivity losses "
-    "in Canadian SMEs and simulating the impact of policy interventions."
-)
+# Header with small Canada flag + title
+col_logo, col_title = st.columns([1, 5])
+with col_logo:
+    st.image(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Flag_of_Canada.svg/320px-Flag_of_Canada.svg.png",
+        use_column_width=True
+    )
+with col_title:
+    st.title("LaborPulse-AI Model Predictive Model to Improve Public Service")
+    st.caption(
+        "Decision-support prototype for estimating SME workforce mental-health–related productivity losses "
+        "in Canada and simulating the impact of public-service interventions."
+    )
 
 # -------------------------
 # Synthetic data generator with scenario intensity
@@ -112,18 +117,23 @@ if scenario_choice == "Upload my own CSV":
     uploaded = st.sidebar.file_uploader(
         "Upload SME CSV",
         type=["csv","xlsx"],
-        help="Columns required: province, sme_id, sector, employees, avg_daily_wage, "
-             "stress_score, burnout_score, absenteeism_score"
+        help=(
+            "Required columns: province, sme_id, sector, employees, avg_daily_wage, "
+            "stress_score, burnout_score, absenteeism_score"
+        )
     )
 else:
     st.sidebar.info(
         "You selected a built-in sample dataset. "
-        "Switch scenarios to see how losses change by SME impact level."
+        "Switch scenarios to see how losses and savings change under different SME risk profiles."
     )
 
 # Economic model parameters
 st.sidebar.subheader("Economic model parameters")
-WORKDAYS_PER_MONTH = st.sidebar.number_input("Workdays per month", value=20, min_value=15, max_value=25)
+WORKDAYS_PER_MONTH = st.sidebar.number_input(
+    "Workdays per month",
+    value=20, min_value=15, max_value=25
+)
 PRESENTEEM_IMPACT = st.sidebar.number_input(
     "Presenteeism productivity loss factor (0–1)",
     value=0.30, min_value=0.0, max_value=1.0, step=0.01
@@ -137,7 +147,7 @@ BURNOUT_TO_PRESENTEEISM_SCALE = st.sidebar.number_input(
 # Load data based on scenario
 # -------------------------
 def load_data():
-    # 1) If user uploads their own file
+    # 1) User-uploaded dataset
     if scenario_choice == "Upload my own CSV":
         if uploaded is None:
             st.info("Please upload an SME CSV file to proceed.")
@@ -151,7 +161,8 @@ def load_data():
         except Exception as e:
             st.error(f"Error reading uploaded file: {e}")
             return None, "Upload error"
-    # 2) Otherwise, sample based on scenario
+
+    # 2) Synthetic scenarios
     if "Low impact" in scenario_choice:
         df_local = generate_synthetic_data(intensity="low", seed=10)
         label = "Sample: Low impact"
@@ -183,7 +194,7 @@ if missing:
     st.error(f"Missing required columns: {missing}. Please adjust your dataset.")
     st.stop()
 
-# Ensure numeric
+# Ensure numeric types
 for col in ["employees","avg_daily_wage","stress_score","burnout_score","absenteeism_score"]:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -214,15 +225,16 @@ st.dataframe(
 )
 
 # -------------------------
-# Province-level aggregation
+# Province-level aggregation (baseline)
 # -------------------------
-st.write("### Province-level aggregation")
+st.write("### Province-level aggregation (baseline)")
 prov_agg = df_losses.groupby("province").agg(
     total_smes=("sme_id","nunique"),
     total_employees=("employees","sum"),
     avg_stress=("stress_score","mean"),
     avg_burnout=("burnout_score","mean"),
     avg_absenteeism=("absenteeism_score","mean"),
+    avg_lost_days=("lost_days_per_emp","mean"),
     avg_daily_wage=("avg_daily_wage","mean"),
     estimated_monthly_loss_cad=("estimated_monthly_loss_cad","sum")
 ).reset_index()
@@ -230,18 +242,21 @@ prov_agg = df_losses.groupby("province").agg(
 prov_agg['estimated_monthly_loss_cad'] = prov_agg['estimated_monthly_loss_cad'].round(2)
 st.dataframe(prov_agg.sort_values("estimated_monthly_loss_cad", ascending=False))
 
-# Key KPIs
+# High-level KPIs
 total_loss = prov_agg['estimated_monthly_loss_cad'].sum()
 total_employees = prov_agg['total_employees'].sum()
 
-kpi_col1, kpi_col2 = st.columns(2)
+kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 with kpi_col1:
-    st.metric("Total estimated monthly economic loss", f"${total_loss:,.0f}")
+    st.metric("Baseline total monthly economic loss", f"${total_loss:,.0f}")
 with kpi_col2:
     st.metric("Total employees covered", f"{int(total_employees):,}")
+with kpi_col3:
+    per_emp_loss = total_loss / total_employees if total_employees > 0 else 0.0
+    st.metric("Baseline loss per employee (monthly)", f"${per_emp_loss:,.2f}")
 
 # -------------------------
-# Visualization
+# Visualization: top provinces by loss
 # -------------------------
 st.write("### Top provinces by estimated monthly loss (CAD)")
 fig, ax = plt.subplots(figsize=(8,4))
@@ -277,6 +292,7 @@ def apply_intervention_and_recompute(df_in, intervention_type, points):
         avg_stress=("stress_score","mean"),
         avg_burnout=("burnout_score","mean"),
         avg_absenteeism=("absenteeism_score","mean"),
+        avg_lost_days=("lost_days_per_emp","mean"),
         estimated_monthly_loss_cad=("estimated_monthly_loss_cad","sum")
     ).reset_index()
     prov_sim['estimated_monthly_loss_cad'] = prov_sim['estimated_monthly_loss_cad'].round(2)
@@ -299,6 +315,76 @@ st.metric(
     "Estimated total monthly savings (all provinces)",
     f"${savings:,.0f}",
     delta=f"{delta_pct:.1f}%"
+)
+
+# -------------------------
+# NEW: Impact of intervention by province
+# -------------------------
+st.write("### Impact of intervention by province")
+
+impact_df = prov_agg.merge(
+    prov_sim,
+    on="province",
+    suffixes=("_baseline", "_after")
+)
+
+impact_df["monthly_savings_cad"] = (
+    impact_df["estimated_monthly_loss_cad_baseline"] -
+    impact_df["estimated_monthly_loss_cad_after"]
+)
+impact_df["savings_pct"] = np.where(
+    impact_df["estimated_monthly_loss_cad_baseline"] > 0,
+    100 * impact_df["monthly_savings_cad"] / impact_df["estimated_monthly_loss_cad_baseline"],
+    0.0
+)
+impact_df["efficiency_gain_cad_per_employee"] = np.where(
+    impact_df["total_employees_baseline"] > 0,
+    impact_df["monthly_savings_cad"] / impact_df["total_employees_baseline"],
+    0.0
+)
+impact_df["reduction_lost_days_per_emp"] = (
+    impact_df["avg_lost_days_baseline"] - impact_df["avg_lost_days_after"]
+)
+
+impact_view = impact_df[[
+    "province",
+    "estimated_monthly_loss_cad_baseline",
+    "estimated_monthly_loss_cad_after",
+    "monthly_savings_cad",
+    "savings_pct",
+    "avg_lost_days_baseline",
+    "avg_lost_days_after",
+    "reduction_lost_days_per_emp",
+    "efficiency_gain_cad_per_employee"
+]].sort_values("monthly_savings_cad", ascending=False)
+
+impact_view = impact_view.rename(columns={
+    "estimated_monthly_loss_cad_baseline": "loss_baseline_cad",
+    "estimated_monthly_loss_cad_after": "loss_after_cad",
+    "monthly_savings_cad": "cost_reduction_cad",
+    "savings_pct": "cost_reduction_pct",
+    "avg_lost_days_baseline": "lost_days_per_emp_baseline",
+    "avg_lost_days_after": "lost_days_per_emp_after"
+})
+
+st.dataframe(impact_view.style.format({
+    "loss_baseline_cad": "{:,.0f}",
+    "loss_after_cad": "{:,.0f}",
+    "cost_reduction_cad": "{:,.0f}",
+    "cost_reduction_pct": "{:,.1f}",
+    "lost_days_per_emp_baseline": "{:,.2f}",
+    "lost_days_per_emp_after": "{:,.2f}",
+    "reduction_lost_days_per_emp": "{:,.2f}",
+    "efficiency_gain_cad_per_employee": "{:,.2f}"
+}))
+
+st.markdown(
+    """
+    **Interpretation:**
+    - **Cost reduction (CAD & %)**: estimated reduction in mental-health–related productivity loss per month.
+    - **Efficiency gain (CAD/employee)**: cost savings per employee, proxy for improved workforce efficiency.
+    - **Reduction in lost days/employee**: fewer days lost to absenteeism and burnout, proxy for faster response and better support.
+    """
 )
 
 # -------------------------
