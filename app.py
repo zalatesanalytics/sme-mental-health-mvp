@@ -4,6 +4,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Try to load scikit-learn for the AI model
+try:
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import r2_score, mean_squared_error
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
 # -------------------------
 # Page config & base styling
 # -------------------------
@@ -62,7 +71,7 @@ economic loss, simulate interventions, and support **policy-level** and **organi
 decisions – never individual profiling.
 
 - **Impact visualization:** dashboards for loss, savings, and lost days  
-- **Predictive analytics (MVP):** simple projections of future economic impact based on current patterns  
+- **AI learning & prediction:** trains a model on available data to predict losses  
 - **Outcome assessment:** highlights both **gains** (savings) and **losses** (when an intervention backfires)  
 - **Responsible AI:** only aggregated SME/provincial outputs, no worker-level scoring  
 """)
@@ -122,7 +131,7 @@ def generate_synthetic_data(intensity="mixed", seed=42, n_smes=200):
 # -------------------------
 st.sidebar.title("LaborPulse-AI Controls")
 
-# 👉 Default is now "Sample: Medium impact" (index=2)
+# Default is now "Sample: Medium impact" (index=2)
 scenario_choice = st.sidebar.radio(
     "Choose dataset scenario:",
     [
@@ -132,7 +141,7 @@ scenario_choice = st.sidebar.radio(
         "Sample: High impact (severe mental-health strain)",
         "Sample: Mixed impact (varied SME risk)"
     ],
-    index=2  # <- medium impact as default
+    index=2
 )
 
 uploaded = None
@@ -222,7 +231,7 @@ for col in ["employees","avg_daily_wage","stress_score","burnout_score","absente
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
 # -------------------------
-# Economic loss calculation per SME
+# Economic loss calculation per SME (rule-based)
 # -------------------------
 def compute_economic_loss(df_in):
     df_l = df_in.copy()
@@ -247,6 +256,71 @@ st.dataframe(
     ]].head(5),
     use_container_width=True
 )
+
+# --------------------------------------------------------------------
+# AI LEARNING & PREDICTION SECTION
+# --------------------------------------------------------------------
+st.write("## AI Learning & Prediction (Random Forest)")
+
+ai_model = None
+ai_r2 = None
+ai_rmse = None
+ai_feature_importance = None
+ai_baseline_total = None
+
+FEATURES = ["stress_score", "burnout_score", "absenteeism_score", "employees", "avg_daily_wage"]
+
+if SKLEARN_AVAILABLE:
+    # Drop rows with missing values in the feature set or target
+    df_train = df_losses.dropna(subset=FEATURES + ["estimated_monthly_loss_cad"]).copy()
+    if len(df_train) >= 20:  # need enough rows to train something reasonable
+        X = df_train[FEATURES]
+        y = df_train["estimated_monthly_loss_cad"]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=42
+        )
+
+        ai_model = RandomForestRegressor(
+            n_estimators=200,
+            random_state=42,
+            n_jobs=-1
+        )
+        ai_model.fit(X_train, y_train)
+
+        y_pred = ai_model.predict(X_test)
+        ai_r2 = r2_score(y_test, y_pred)
+        ai_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+        # Feature importance
+        importances = ai_model.feature_importances_
+        ai_feature_importance = (
+            pd.DataFrame({
+                "feature": FEATURES,
+                "importance": importances
+            })
+            .sort_values("importance", ascending=False)
+        )
+
+        # AI-estimated baseline total monthly loss
+        ai_baseline_total = ai_model.predict(df_losses[FEATURES]).sum()
+
+        k1, k2 = st.columns(2)
+        with k1:
+            st.metric("AI model R² (prediction power)", f"{ai_r2:.2f}")
+        with k2:
+            st.metric("AI model RMSE (CAD)", f"${ai_rmse:,.0f}")
+
+        st.write("Top drivers of predicted economic loss (feature importance):")
+        st.dataframe(ai_feature_importance, use_container_width=True)
+
+    else:
+        st.warning("Not enough rows to train the AI model (need at least 20).")
+else:
+    st.warning(
+        "scikit-learn is not installed. To enable AI learning, add `scikit-learn` "
+        "to your requirements.txt and redeploy."
+    )
 
 # -------------------------
 # Province-level aggregation (baseline)
@@ -351,6 +425,21 @@ st.metric(
     f"${savings:,.0f}",
     delta=f"{delta_pct:.1f}%"
 )
+
+# --- AI-estimated savings for this scenario (using learned model) ---
+ai_sim_total = None
+ai_scenario_savings = None
+if ai_model is not None:
+    try:
+        ai_sim_total = ai_model.predict(df_sim[FEATURES]).sum()
+        ai_scenario_savings = ai_baseline_total - ai_sim_total if ai_baseline_total is not None else None
+        st.caption(
+            f"AI-estimated monthly loss (baseline): **${ai_baseline_total:,.0f}** | "
+            f"AI-estimated monthly loss (scenario): **${ai_sim_total:,.0f}** | "
+            f"AI-estimated savings: **${ai_scenario_savings:,.0f}**"
+        )
+    except Exception:
+        st.caption("AI model could not compute scenario estimates for this dataset.")
 
 # Simple predictive outlook (extrapolation)
 projected_annual_savings = savings * 12
@@ -503,6 +592,69 @@ st.markdown(
       inform **organizational and policy-level actions**, not individual HR decisions.
     """
 )
+
+# --------------------------------------------------------------------
+# AI-BASED RECOMMENDED INTERVENTION LIST (FOR GOVERNMENT)
+# --------------------------------------------------------------------
+st.write("### AI-based recommended intervention priorities for government")
+
+if ai_model is not None and ai_baseline_total is not None:
+    def ai_simulate_intervention(df_base, intervention_type, points):
+        df_tmp = df_base.copy()
+        if points > 0:
+            if intervention_type == "Reduce stress scores":
+                df_tmp["stress_score"] = (df_tmp["stress_score"] - points).clip(1,10)
+            elif intervention_type == "Reduce burnout scores":
+                df_tmp["burnout_score"] = (df_tmp["burnout_score"] - points).clip(1,10)
+            elif intervention_type == "Reduce absenteeism scores":
+                df_tmp["absenteeism_score"] = (df_tmp["absenteeism_score"] - points).clip(1,10)
+        df_tmp = compute_economic_loss(df_tmp)  # keep consistent structure
+        total_pred = ai_model.predict(df_tmp[FEATURES]).sum()
+        return total_pred
+
+    test_points = 2  # default, can interpret as "modest but realistic intervention"
+    scenarios = [
+        "Reduce burnout scores",
+        "Reduce stress scores",
+        "Reduce absenteeism scores"
+    ]
+    rows = []
+    for s in scenarios:
+        ai_total = ai_simulate_intervention(df, s, test_points)
+        rows.append({
+            "intervention_type": s,
+            "reduction_points_tested": test_points,
+            "ai_estimated_monthly_savings_cad": ai_baseline_total - ai_total
+        })
+    rec_df = pd.DataFrame(rows).sort_values(
+        "ai_estimated_monthly_savings_cad", ascending=False
+    )
+    st.dataframe(
+        rec_df.style.format({
+            "ai_estimated_monthly_savings_cad": "{:,.0f}"
+        }),
+        use_container_width=True
+    )
+
+    st.markdown(
+        """
+        **Interpretation (AI-based recommendations):**
+
+        - The table ranks intervention types by **AI-estimated monthly savings**, assuming a modest
+          reduction of 2 points in the relevant risk scores.
+        - Interventions at the top (often **burnout-focused** in many SME contexts) tend to produce
+          the largest economic returns and may warrant **priority investment** (e.g., counseling benefits,
+          manager training, psychosocial support).
+        - This ranking is **data-driven** and updates automatically when you upload new SME datasets or
+          adjust model parameters, illustrating how LaborPulse-AI can **continuously learn** from new data
+          to refine policy guidance.
+        """
+    )
+else:
+    st.caption(
+        "AI-based ranking is unavailable because the AI model could not be trained "
+        "(either scikit-learn is missing or there were too few rows)."
+    )
 
 # -------------------------
 # Export reports
