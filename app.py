@@ -617,6 +617,85 @@ simulation of different policy packages.
 elif page == "About & Methodology":
     st.write("## About & Methodology")
 
+    # --- Data-driven interpretation (policy-level) ---
+
+# National weighted averages for lost days (before & after)
+if total_employees > 0:
+    nat_lost_before = (
+        (prov_agg["avg_lost_days"] * prov_agg["total_employees"]).sum() / total_employees
+    )
+    nat_lost_after = (
+        (prov_sim["avg_lost_days"] * prov_sim["total_employees"]).sum() / total_employees
+    )
+else:
+    nat_lost_before = nat_lost_after = 0.0
+
+# Top province by absolute cost reduction (can be negative if costs increase)
+top_row = impact_view.iloc[0] if not impact_view.empty else None
+if top_row is not None:
+    top_province = top_row["province"]
+    top_loss_before = top_row["loss_baseline_cad"]
+    top_loss_after = top_row["loss_after_cad"]
+    top_saving = top_row["cost_reduction_cad"]
+    top_pct = top_row["cost_reduction_pct"]
+else:
+    top_province = None
+    top_loss_before = top_loss_after = top_saving = top_pct = 0.0
+
+# Weighted average efficiency gain per employee across provinces
+if total_employees > 0:
+    avg_eff_gain_per_emp = (
+        impact_df["efficiency_gain_cad_per_employee"]
+        * impact_df["total_employees_baseline"]
+    ).sum() / total_employees
+else:
+    avg_eff_gain_per_emp = 0.0
+
+direction = "reduction" if savings >= 0 else "increase"
+direction_word = "gain" if savings >= 0 else "loss"
+
+st.markdown(
+    f"""
+    **Interpretation for this scenario (policy-level)**  
+    _Dataset: **{dataset_label}**, Intervention: **{intervention}**, Reduction: **{reduction_points} points**_
+
+    - Across all participating SMEs (**{int(total_employees):,} workers**), baseline mental-health–related
+      productivity loss is estimated at **${baseline_total:,.0f} per month**. Under the selected intervention,
+      losses change to **${sim_total:,.0f} per month**, a net **{direction} of ${abs(savings):,.0f}**
+      (**{delta_pct:.1f}% {direction_word}**).
+    - At the national level, average lost days per employee shift from
+      **{nat_lost_before:.2f} days/month** to **{nat_lost_after:.2f} days/month**. This indicates
+      a **{('decline' if nat_lost_after < nat_lost_before else 'rise')} in time lost to absenteeism and burnout**, 
+      which is a proxy for **response time to mental-health needs** and overall workplace support.
+    """
+)
+
+if top_province is not None:
+    st.markdown(
+        f"""
+        - The province with the largest absolute cost impact is **{top_province}**, where monthly
+          mental-health–related productivity losses change from **${top_loss_before:,.0f}** to
+          **${top_loss_after:,.0f}**, a net **{('reduction' if top_saving >= 0 else 'increase')} of ${abs(top_saving):,.0f}**
+          (**{top_pct:.1f}%**). This suggests **{top_province}** is a priority candidate for 
+          scaling up or redesigning interventions.
+        """
+    )
+
+st.markdown(
+    f"""
+    - On average, the intervention generates an estimated **efficiency gain of ${avg_eff_gain_per_emp:,.2f}
+      per employee per month**. This can be interpreted as improved productivity and better use of public or
+      employer resources when investments in mental-health support are effective.
+    - Provinces with higher **baseline losses** and larger **cost reductions** are strong candidates for
+      targeted public-service investment (e.g., mental-health benefits, grants, training, or psychosocial programs).
+    - When **cost_reduction_cad > 0**, the intervention produces a **positive economic return** through lower 
+      mental-health–related productivity loss. When **cost_reduction_cad < 0**, LaborPulse-AI clearly reports
+      a **net loss**, signaling that policymakers may need to **adjust, retarget, or redesign** the intervention.
+    - All estimates are based on **aggregated SME and provincial-level data** only; LaborPulse-AI does **not**
+      score or profile individual workers. It is designed as a **responsible AI decision-support tool** to 
+      inform **organizational and policy-level actions**, not individual HR decisions.
+    """
+)
     st.markdown("""
 ### 1. Conceptual approach
 
