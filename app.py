@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 # Page config & base styling
 # -------------------------
 st.set_page_config(
-    page_title="LaborPulse-AI A Predictive Model to Improve Public Service",
+    page_title="LaborPulse-AI To Improve Public Service",
     layout="wide"
 )
 
@@ -40,7 +40,7 @@ with col_logo:
         use_column_width=True
     )
 with col_title:
-    st.title("LaborPulse-AI A Predictive Model to Improve Public Service")
+    st.title("LaborPulse-AI To Improve Public Service")
     st.caption(
         "Decision-support prototype for estimating SME workforce mental-health–related productivity losses "
         "in Canada and simulating the impact of public-service interventions."
