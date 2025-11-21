@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Try to load scikit-learn for the AI model
+# Try to load scikit-learn for the  AI model
 try:
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import train_test_split
