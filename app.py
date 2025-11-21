@@ -1,4 +1,4 @@
-# app.py — LaborPulse-AI : Predictive Model to Improve SME Public Service Provision 
+# app.py — LaborPulse-AI: ImproveD SME Service 
 import streamlit as st
 import pandas as pd
 import numpy as np
