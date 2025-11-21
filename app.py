@@ -1,4 +1,4 @@
-# app.py — LaborPulse-AI Model Predictive Model to Improve Public Service
+# app.py — LaborPulse-AI : Predictive Model to Improve SME Public Service Provision 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 # Page config & base styling
 # -------------------------
 st.set_page_config(
-    page_title="LaborPulse-AI Predictive Model to Improve Public Service",
+    page_title="LaborPulse-AI Model Predictive Model to Improve Public Service",
     layout="wide"
 )
 
@@ -44,6 +44,31 @@ with col_title:
     st.caption(
         "Decision-support prototype for estimating SME workforce mental-health–related productivity losses "
         "in Canada and simulating the impact of public-service interventions."
+    )
+
+# About the AI decision-support agent
+with st.expander("About LaborPulse-AI (AI decision-support agent)", expanded=False):
+    st.markdown(
+        """
+        LaborPulse-AI is an **AI decision-support agent** designed to analyze aggregated workforce
+        mental-health indicators from SMEs and evaluate how government or organizational interventions
+        affect productivity and economic outcomes.
+
+        **What this prototype does:**
+
+        - **Impact visualization:** Shows how interventions change mental-health scores, lost days, and
+          economic losses across provinces, using before/after comparisons and summary graphs.
+        - **Predictive analytics (MVP):** Uses the current data and intervention scenario to estimate
+          monthly and projected annual savings, providing a forward-looking view of potential gains.
+        - **Outcome assessment:** Quantifies both **positive economic gains** (cost reductions) and
+          **negative outcomes** (when an intervention increases losses), and reports them clearly.
+        - **Decision-support role:** Only produces **organizational and policy-level outputs**; it never
+          ranks or profiles individual workers and is intended to support responsible, evidence-based
+          public-service decisions.
+
+        Future versions can incorporate **continuous learning** from multiple historical datasets, and
+        richer time-series models to forecast mental-health risks by province and nationally.
+        """
     )
 
 # -------------------------
@@ -245,6 +270,7 @@ st.dataframe(prov_agg.sort_values("estimated_monthly_loss_cad", ascending=False)
 # High-level KPIs
 total_loss = prov_agg['estimated_monthly_loss_cad'].sum()
 total_employees = prov_agg['total_employees'].sum()
+per_emp_loss = total_loss / total_employees if total_employees > 0 else 0.0
 
 kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 with kpi_col1:
@@ -252,7 +278,6 @@ with kpi_col1:
 with kpi_col2:
     st.metric("Total employees covered", f"{int(total_employees):,}")
 with kpi_col3:
-    per_emp_loss = total_loss / total_employees if total_employees > 0 else 0.0
     st.metric("Baseline loss per employee (monthly)", f"${per_emp_loss:,.2f}")
 
 # -------------------------
@@ -311,14 +336,27 @@ sim_total = prov_sim['estimated_monthly_loss_cad'].sum()
 savings = baseline_total - sim_total
 delta_pct = (savings / baseline_total * 100) if baseline_total > 0 else 0.0
 
+# Outcome assessment: gains vs losses
+overall_label = "Monthly economic gain (cost reduction)"
+if savings < 0:
+    overall_label = "Monthly economic loss (intervention increases costs)"
+
 st.metric(
-    "Estimated total monthly savings (all provinces)",
+    overall_label,
     f"${savings:,.0f}",
     delta=f"{delta_pct:.1f}%"
 )
 
+# Simple predictive outlook (extrapolation)
+projected_annual_savings = savings * 12
+st.caption(
+    f"If this intervention level is sustained for 12 months, the projected annual impact is "
+    f"**{'saving' if projected_annual_savings >= 0 else 'additional cost of'} "
+    f"${abs(projected_annual_savings):,.0f}** (assuming no other shocks)."
+)
+
 # -------------------------
-# NEW: Impact of intervention by province
+# Impact of intervention by province
 # -------------------------
 st.write("### Impact of intervention by province")
 
@@ -380,10 +418,27 @@ st.dataframe(impact_view.style.format({
 
 st.markdown(
     """
-    **Interpretation:**
-    - **Cost reduction (CAD & %)**: estimated reduction in mental-health–related productivity loss per month.
-    - **Efficiency gain (CAD/employee)**: cost savings per employee, proxy for improved workforce efficiency.
-    - **Reduction in lost days/employee**: fewer days lost to absenteeism and burnout, proxy for faster response and better support.
+    **Interpretation (policy-level):**
+
+    - **Cost reduction (CAD & %)** – `cost_reduction_cad` and `cost_reduction_pct` capture the
+      estimated reduction in mental-health–related productivity loss per month in each province.
+      Positive values signal **economic gains**; negative values flag **added costs**.
+    - **Efficiency gain (CAD/employee)** – `efficiency_gain_cad_per_employee` approximates cost
+      savings per worker per month. Higher values suggest improved workforce efficiency and better
+      use of public or employer resources.
+    - **Reduction in lost days/employee** – `reduction_lost_days_per_emp` shows fewer days lost
+      to absenteeism and burnout per employee. This acts as a proxy for **faster response**, better
+      access to services, and reduced strain on frontline health and social systems.
+    - **Provincial comparison** – provinces with higher baseline losses and larger cost reductions
+      may be priority targets for scaling up support (e.g., mental-health benefits, grants, or
+      psychosocial programs).
+    - **Outcome assessment** – when **cost_reduction_cad > 0**, the intervention generates
+      measurable productivity and economic gains; when it is **< 0**, the model clearly reports
+      a net loss so policymakers can reconsider or redesign the intervention.
+
+    LaborPulse-AI only works with **aggregated SME and provincial-level data**. It is not designed
+    to profile or score individual workers, and all insights are intended to support responsible,
+    transparent public-service decisions.
     """
 )
 
@@ -410,7 +465,8 @@ st.download_button(
 st.write("---")
 st.caption(
     "LaborPulse-AI is a prototype decision-support tool. Values are based on synthetic or aggregated SME data "
-    "and configurable assumptions. For real-world policy, calibrate parameters with administrative and payroll data."
+    "and configurable assumptions. For real-world policy, calibrate parameters with administrative and payroll data, "
+    "and consider integrating multi-year time-series for richer forecasting."
 )
 
 st.markdown('</div>', unsafe_allow_html=True)
