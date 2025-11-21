@@ -25,6 +25,11 @@ st.markdown(
         border-radius: 1rem;
         box-shadow: 0 2px 12px rgba(0,0,0,0.08);
     }
+    @media (max-width: 768px) {
+        .main-block {
+            padding: 1rem;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -61,7 +66,6 @@ decisions – never individual profiling.
 - **Outcome assessment:** highlights both **gains** (savings) and **losses** (when an intervention backfires)  
 - **Responsible AI:** only aggregated SME/provincial outputs, no worker-level scoring  
 """)
-
 
 # -------------------------
 # Synthetic data generator with scenario intensity
@@ -118,6 +122,7 @@ def generate_synthetic_data(intensity="mixed", seed=42, n_smes=200):
 # -------------------------
 st.sidebar.title("LaborPulse-AI Controls")
 
+# 👉 Default is now "Sample: Medium impact" (index=2)
 scenario_choice = st.sidebar.radio(
     "Choose dataset scenario:",
     [
@@ -126,7 +131,8 @@ scenario_choice = st.sidebar.radio(
         "Sample: Medium impact",
         "Sample: High impact (severe mental-health strain)",
         "Sample: Mixed impact (varied SME risk)"
-    ]
+    ],
+    index=2  # <- medium impact as default
 )
 
 uploaded = None
@@ -141,7 +147,7 @@ if scenario_choice == "Upload my own CSV":
     )
 else:
     st.sidebar.info(
-        "You selected a built-in sample dataset. "
+        "You are using a built-in **Medium impact** sample by default. "
         "Switch scenarios to see how losses and savings change under different SME risk profiles."
     )
 
@@ -199,8 +205,8 @@ if df is None:
     st.stop()
 
 st.write(f"### Current dataset: {dataset_label}")
-st.write("Preview of data (first 10 rows):")
-st.dataframe(df.head(10))
+st.write("Preview of data (first 5 rows):")
+st.dataframe(df.head(5), use_container_width=True)
 
 required = [
     "province","sme_id","sector","employees","avg_daily_wage",
@@ -238,7 +244,8 @@ st.dataframe(
         "province","sme_id","sector","employees","avg_daily_wage",
         "stress_score","burnout_score","absenteeism_score",
         "lost_days_per_emp","estimated_monthly_loss_cad"
-    ]].head(15)
+    ]].head(5),
+    use_container_width=True
 )
 
 # -------------------------
@@ -257,7 +264,10 @@ prov_agg = df_losses.groupby("province").agg(
 ).reset_index()
 
 prov_agg['estimated_monthly_loss_cad'] = prov_agg['estimated_monthly_loss_cad'].round(2)
-st.dataframe(prov_agg.sort_values("estimated_monthly_loss_cad", ascending=False))
+st.dataframe(
+    prov_agg.sort_values("estimated_monthly_loss_cad", ascending=False),
+    use_container_width=True
+)
 
 # High-level KPIs
 total_loss = prov_agg['estimated_monthly_loss_cad'].sum()
@@ -276,14 +286,14 @@ with kpi_col3:
 # Visualization: top provinces by loss
 # -------------------------
 st.write("### Top provinces by estimated monthly loss (CAD)")
-fig, ax = plt.subplots(figsize=(8,4))
+fig, ax = plt.subplots(figsize=(6,4))
 prov_sorted = prov_agg.sort_values("estimated_monthly_loss_cad", ascending=True)
 ax.barh(prov_sorted['province'], prov_sorted['estimated_monthly_loss_cad'])
 ax.set_xlabel("Estimated monthly loss (CAD)")
-st.pyplot(fig)
+st.pyplot(fig, use_container_width=True)
 
 # -------------------------
-# Intervention simulation — adjust scores and recompute losses
+# Scenario simulation — adjust scores and recompute losses
 # -------------------------
 st.write("### Scenario simulation: mental-health interventions")
 
@@ -321,7 +331,10 @@ st.write(
     f"Projected province-level losses after **{intervention}** "
     f"(reduction = {reduction_points} points, dataset: {dataset_label}):"
 )
-st.dataframe(prov_sim.sort_values("estimated_monthly_loss_cad", ascending=False))
+st.dataframe(
+    prov_sim.sort_values("estimated_monthly_loss_cad", ascending=False),
+    use_container_width=True
+)
 
 baseline_total = prov_agg['estimated_monthly_loss_cad'].sum()
 sim_total = prov_sim['estimated_monthly_loss_cad'].sum()
@@ -397,16 +410,19 @@ impact_view = impact_view.rename(columns={
     "avg_lost_days_after": "lost_days_per_emp_after"
 })
 
-st.dataframe(impact_view.style.format({
-    "loss_baseline_cad": "{:,.0f}",
-    "loss_after_cad": "{:,.0f}",
-    "cost_reduction_cad": "{:,.0f}",
-    "cost_reduction_pct": "{:,.1f}",
-    "lost_days_per_emp_baseline": "{:,.2f}",
-    "lost_days_per_emp_after": "{:,.2f}",
-    "reduction_lost_days_per_emp": "{:,.2f}",
-    "efficiency_gain_cad_per_employee": "{:,.2f}"
-}))
+st.dataframe(
+    impact_view.style.format({
+        "loss_baseline_cad": "{:,.0f}",
+        "loss_after_cad": "{:,.0f}",
+        "cost_reduction_cad": "{:,.0f}",
+        "cost_reduction_pct": "{:,.1f}",
+        "lost_days_per_emp_baseline": "{:,.2f}",
+        "lost_days_per_emp_after": "{:,.2f}",
+        "reduction_lost_days_per_emp": "{:,.2f}",
+        "efficiency_gain_cad_per_employee": "{:,.2f}"
+    }),
+    use_container_width=True
+)
 
 # --- Data-driven interpretation (policy-level) ---
 
