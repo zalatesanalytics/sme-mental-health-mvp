@@ -1,4 +1,4 @@
-# app.py — LaborPulse-AI Model Predictive Model to Improve Public Service
+# app.py — LaborPulse-AI 
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 # Page config & base styling
 # -------------------------
 st.set_page_config(
-    page_title="LaborPulse-AI Model Predictive Model to Improve Public Service",
+    page_title="LaborPulse-AI A Predictive Model to Improve Public Service",
     layout="wide"
 )
 
