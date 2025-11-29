@@ -17,7 +17,7 @@ except ImportError:
 # Page config & base styling
 # -------------------------
 st.set_page_config(
-    page_title="LaborPulse-AI To Improve Public Service",
+    page_title="LabourPulse AI: Privacy-Preserving Workforce Health Intelligence",
     layout="wide"
 )
 
@@ -64,9 +64,9 @@ with col_title:
 # ABOUT AGENT (GLOBAL) — ALWAYS VISIBLE
 # --------------------------------------------------------------------
 st.markdown("""
-### About LaborPulse-AI (AI decision-support agent)
+### About LabourPulse AI: Privacy-Preserving Workforce Health Intelligence
 
-LaborPulse-AI analyzes **aggregated** SME workforce mental-health indicators to estimate
+LabourPulse AI: Privacy-Preserving Workforce Health Intelligence analyzes **aggregated** SME workforce mental-health indicators to estimate
 economic loss, simulate interventions, and support **policy-level** and **organizational**
 decisions – never individual profiling.
 
